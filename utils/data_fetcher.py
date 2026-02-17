@@ -7,6 +7,12 @@ import sqlite3
 import json
 import time
 
+try:
+    from db_connection import get_connection
+    HAS_DB_WRAPPER = True
+except ImportError:
+    HAS_DB_WRAPPER = False
+
 class PGADataFetcher:
     """Fetches data from PGA Tour and database"""
     
@@ -19,6 +25,12 @@ class PGADataFetcher:
         self.current_tournament = None
         self.player_cache = {}
         self.db_path = Path(__file__).parent.parent / "pga_fantasy.db"
+
+    def _get_conn(self):
+        """Get database connection (cloud or local)"""
+        if HAS_DB_WRAPPER:
+            return get_connection(str(self.db_path))
+        return sqlite3.connect(str(self.db_path))
     
     def get_current_tournament(self):
         """Get current week's tournament information from ESPN API"""
@@ -141,7 +153,7 @@ class PGADataFetcher:
     def get_tournament_field(self, tournament_id=None):
         """Get list of players with 2026 tournament results"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_conn() as conn:
                 # ONLY players with 2026 results - reduces from 833 to ~194
                 query = """
                     SELECT DISTINCT player_name
@@ -171,7 +183,7 @@ class PGADataFetcher:
                     return data
             
             # Fetch from database
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_conn() as conn:
                 # Get player stats
                 cursor = conn.cursor()
                 cursor.execute("""
@@ -350,7 +362,7 @@ class PGADataFetcher:
         stats_detail = ""
         if player_name:
             try:
-                with sqlite3.connect(self.db_path) as conn:
+                with self._get_conn() as conn:
                     cursor = conn.cursor()
                     cursor.execute("""
                         SELECT recent_events, avg_finish, best_finish
