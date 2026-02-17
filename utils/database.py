@@ -1,5 +1,11 @@
 import sqlite3
 import pandas as pd
+
+try:
+    from db_connection import get_connection
+    HAS_DB_WRAPPER = True
+except ImportError:
+    HAS_DB_WRAPPER = False
 from datetime import datetime
 from pathlib import Path
 
@@ -9,10 +15,16 @@ class DatabaseManager:
     def __init__(self, db_path="pga_fantasy.db"):
         self.db_path = Path(__file__).parent.parent / db_path
         self.init_database()
+
+    def _get_conn(self):
+        """Get database connection (cloud or local)"""
+        if HAS_DB_WRAPPER:
+            return get_connection(str(self.db_path))
+        return sqlite3.connect(str(self.db_path))
     
     def init_database(self):
         """Initialize database tables"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_conn() as conn:
             cursor = conn.cursor()
             
             # Picks table
@@ -56,7 +68,7 @@ class DatabaseManager:
             tournament_date = datetime.now().strftime("%Y-%m-%d")
         
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_conn() as conn:
                 cursor = conn.cursor()
                 
                 # Check if player already used
@@ -88,7 +100,7 @@ class DatabaseManager:
     
     def is_player_used(self, player_name):
         """Check if player has already been picked"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_conn() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT player_name FROM used_players WHERE player_name = ?",
@@ -98,7 +110,7 @@ class DatabaseManager:
     
     def get_used_players(self):
         """Get list of all used players"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_conn() as conn:
             df = pd.read_sql_query(
                 "SELECT player_name FROM used_players",
                 conn
@@ -107,7 +119,7 @@ class DatabaseManager:
     
     def get_player_used_week(self, player_name):
         """Get the tournament name when player was used"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_conn() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT tournament_name FROM used_players WHERE player_name = ?",
@@ -118,14 +130,14 @@ class DatabaseManager:
     
     def get_picks_count(self):
         """Get total number of picks made"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_conn() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) FROM picks")
             return cursor.fetchone()[0]
     
     def get_all_picks(self):
         """Get all picks with details"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_conn() as conn:
             return pd.read_sql_query("""
                 SELECT 
                     player_name as 'Player',
@@ -141,7 +153,7 @@ class DatabaseManager:
     def update_pick_results(self, player_name, tournament_name, finish_position, money_won):
         """Update pick with tournament results"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_conn() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     UPDATE picks 
@@ -159,7 +171,7 @@ class DatabaseManager:
     def cache_player_stats(self, player_name, stats_json):
         """Cache player stats to reduce API calls"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_conn() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     INSERT OR REPLACE INTO player_stats_cache (player_name, stats_json, last_updated)
@@ -173,7 +185,7 @@ class DatabaseManager:
     
     def get_cached_player_stats(self, player_name, max_age_hours=24):
         """Get cached player stats if fresh enough"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_conn() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT stats_json, last_updated
@@ -187,7 +199,7 @@ class DatabaseManager:
     def clear_season_data(self):
         """Clear all picks for new season (use with caution!)"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_conn() as conn:
                 cursor = conn.cursor()
                 cursor.execute("DELETE FROM picks")
                 cursor.execute("DELETE FROM used_players")
@@ -200,7 +212,7 @@ class DatabaseManager:
     def add_historical_picks(self, picks_data):
         """Bulk add historical picks (for initial setup)"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_conn() as conn:
                 cursor = conn.cursor()
                 
                 for pick in picks_data:
