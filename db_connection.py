@@ -107,6 +107,18 @@ class TursoCursorProxy:
         if self._result:
             return self._result.fetchall()
         return []
+    
+    def fetchmany(self, size=1):
+        if self._result:
+            return self._result.fetchall()[:size]
+        return []
+    
+    def close(self):
+        pass
+    
+    @property
+    def rowcount(self):
+        return -1
 
 
 class TursoCursor:
