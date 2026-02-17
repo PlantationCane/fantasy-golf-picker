@@ -88,6 +88,12 @@ class TursoCursorProxy:
         self.conn = conn
         self._result = None
     
+    @property
+    def description(self):
+        if self._result:
+            return self._result.description
+        return None
+    
     def execute(self, sql, params=None):
         self._result = self.conn.execute(sql, params)
         return self
