@@ -134,11 +134,38 @@ def show_tournament_view():
     # Apply filters
     if min_win_prob > 0:
         field_df = field_df[field_df['win_probability'] >= min_win_prob]
-    
+
+    # Apply sorting
+    if sort_by == 'Value Score':
+        field_df = field_df.sort_values('value_score', ascending=False).reset_index(drop=True)
+    elif sort_by == 'FedEx Rank':
+        field_df = field_df.sort_values('fedex_rank', ascending=True, na_position='last').reset_index(drop=True)
+    elif sort_by == 'Recent Form':
+        form_order = {'🔥 Excellent': 0, '✅ Good': 1, '🔶 Average': 2, '🔻 Poor': 3, 'N/A': 4}
+        field_df['form_sort'] = field_df['recent_form'].apply(lambda x: next((v for k, v in form_order.items() if k in str(x)), 4))
+        field_df = field_df.sort_values('form_sort').reset_index(drop=True)
+    field_df['rank'] = range(1, len(field_df) + 1)
+
     # Don't filter out used players - they'll show greyed out in their proper rank
-    
+
+    # Tournament course fit insights
+    tournament_name = tournament_info.get('name', '')
+    course_insights = {
+        'Genesis': '🎯 **Riviera favors:** Accurate iron players, creative short game (kikuyu rough), consistent ball strikers. Bombers have no advantage — precision wins here.',
+        'Pebble Beach': '🎯 **Pebble Beach favors:** All-around players who handle wind, links-style creativity, and cold weather. Scrambling ability is key.',
+        'Players': '🎯 **TPC Sawgrass favors:** Accurate drivers, strong iron play to small greens, steady nerves on 17. Avoid big hitters who spray it.',
+        'Masters': '🎯 **Augusta favors:** Long hitters who draw the ball, elite iron play into large greens, and superior putting on fast bentgrass.',
+        'Memorial': '🎯 **Muirfield Village favors:** Accurate ball strikers, strong iron play, good putters on bentgrass. Positioning off the tee matters.',
+        'Arnold Palmer': '🎯 **Bay Hill favors:** Long hitters who can attack the par 5s, strong approach play, and good putting.',
+        'Phoenix': '🎯 **TPC Scottsdale favors:** Birdie machines — low scoring, par 5 dominance, and players who thrive in party atmosphere.',
+    }
+    insight = next((v for k, v in course_insights.items() if k.lower() in tournament_name.lower()), None)
+    if insight:
+        st.info(insight)
+
     # Display player grid
     st.subheader("Tournament Field")
+    st.caption("💡 To make your pick: expand a player card below and click ✅ Select Player")
     
     # Create columns for player cards
     for idx, row in field_df.iterrows():
@@ -179,13 +206,11 @@ def player_card(player_data, tournament_info):
         perf_name = player_data.get('player_name', '')
         try:
             import sqlite3
-            perf_conn = st.session_state.db_manager._get_conn()
-            perf_cursor = perf_conn.cursor()
-            perf_cursor.execute(
+            perf_conn = sqlite3.connect(st.session_state.db_manager.db_path)
+            perf_row = perf_conn.execute(
                 "SELECT scoring_avg, driving_distance, driving_accuracy, gir_pct, putts_per_hole, birdies_per_round, scoring_avg_rank, driving_distance_rank, driving_accuracy_rank, gir_pct_rank, putts_per_hole_rank, birdies_per_round_rank, composite_score FROM player_performance_stats WHERE player_name = ?",
                 (perf_name,)
-            )
-            perf_row = perf_cursor.fetchone()
+            ).fetchone()
             perf_conn.close()
             if perf_row:
                 st.subheader("📈 Season Performance Stats")
@@ -214,8 +239,8 @@ def player_card(player_data, tournament_info):
                     val = f"{perf_row[5]:.2f}" if perf_row[5] else "N/A"
                     rnk = f"#{perf_row[11]}" if perf_row[11] else ""
                     st.metric("Birdies/Rd", val, rnk)
-        except Exception:
-            pass
+        except Exception as e:
+            st.warning(f"Perf stats error: {e}")
 
         # Detailed stats sections
         st.divider()
