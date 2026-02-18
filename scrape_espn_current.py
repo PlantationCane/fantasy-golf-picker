@@ -70,6 +70,26 @@ class ESPNCurrentSeasonScraper:
                     last_updated TIMESTAMP
                 )
             """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS player_performance_stats (
+                    player_name TEXT PRIMARY KEY,
+                    scoring_avg REAL,
+                    driving_distance REAL,
+                    driving_accuracy REAL,
+                    gir_pct REAL,
+                    putts_per_hole REAL,
+                    birdies_per_round REAL,
+                    scoring_avg_rank INTEGER,
+                    driving_distance_rank INTEGER,
+                    driving_accuracy_rank INTEGER,
+                    gir_pct_rank INTEGER,
+                    putts_per_hole_rank INTEGER,
+                    birdies_per_round_rank INTEGER,
+                    composite_score REAL,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
             
             conn.commit()
     
@@ -83,6 +103,7 @@ class ESPNCurrentSeasonScraper:
             'fedex_cup': False,
             'money_list': False,
             'world_rankings': False,
+            'performance_stats': False,
             'tournament': False
         }
         
@@ -116,6 +137,16 @@ class ESPNCurrentSeasonScraper:
         
         time.sleep(2)
         
+        # Performance Stats from ESPN API
+        print("\n📈 Scraping Performance Stats...")
+        results['performance_stats'] = self.scrape_performance_stats()
+        if results['performance_stats']:
+            print("✅ Performance Stats complete!")
+        else:
+            print("⚠️  Performance Stats - partial data")
+
+        time.sleep(2)
+
         # Current Tournament
         print("\n🏆 Getting Current Tournament...")
         results['tournament'] = self.get_current_tournament()
@@ -364,6 +395,141 @@ class ESPNCurrentSeasonScraper:
             print(f"   Error: {e}")
             return False
     
+    def scrape_performance_stats(self):
+        """Scrape performance stats from ESPN statistics API"""
+        try:
+            url = "https://site.api.espn.com/apis/site/v2/sports/golf/pga/statistics"
+            response = requests.get(url, timeout=15)
+            
+            if response.status_code != 200:
+                print(f"   ❌ ESPN stats API returned {response.status_code}")
+                return False
+            
+            data = response.json()
+            stats_data = data.get('stats', {})
+            categories = stats_data.get('categories', []) if isinstance(stats_data, dict) else []
+            
+            if not categories:
+                print("   ❌ No stat categories found")
+                return False
+            
+            # Map ESPN category names to our column names
+            stat_map = {
+                'scoringAverage': 'scoring_avg',
+                'yardsPerDrive': 'driving_distance',
+                'driveAccuracyPct': 'driving_accuracy',
+                'greensInRegPct': 'gir_pct',
+                'strokesPerHole': 'putts_per_hole',
+                'birdiesPerRound': 'birdies_per_round',
+            }
+            
+            # Collect all player stats across categories
+            all_players = {}  # name -> {stat_col: value}
+            
+            for cat in categories:
+                cat_name = cat.get('name', '')
+                col_name = stat_map.get(cat_name)
+                
+                if col_name is None:
+                    continue
+                
+                leaders = cat.get('leaders', [])
+                for rank, entry in enumerate(leaders, 1):
+                    name = entry.get('athlete', {}).get('displayName', '')
+                    value = entry.get('value')
+                    
+                    if not name or value is None:
+                        continue
+                    
+                    if name not in all_players:
+                        all_players[name] = {}
+                    
+                    all_players[name][col_name] = float(value)
+                    all_players[name][f'{col_name}_rank'] = rank
+            
+            if not all_players:
+                print("   ❌ No player stats collected")
+                return False
+            
+            print(f"   Found stats for {len(all_players)} players")
+            
+            # Compute composite score
+            # Weights based on correlation with tournament success
+            weights = {
+                'scoring_avg': 0.35,      # strongest predictor
+                'gir_pct': 0.25,           # approach quality
+                'driving_distance': 0.15,  # power
+                'driving_accuracy': 0.10,  # precision
+                'putts_per_hole': 0.10,    # putting
+                'birdies_per_round': 0.05, # explosiveness
+            }
+            
+            # For each player, compute weighted rank score
+            for name, stats in all_players.items():
+                weighted_sum = 0
+                weight_total = 0
+                
+                for stat, weight in weights.items():
+                    rank_key = f'{stat}_rank'
+                    if rank_key in stats:
+                        # Convert rank (1=best) to score (100=best)
+                        # Rank 1 out of 50 = score 100, Rank 50 = score 2
+                        rank = stats[rank_key]
+                        score = max(0, (51 - rank) / 50 * 100)
+                        weighted_sum += score * weight
+                        weight_total += weight
+                
+                if weight_total > 0:
+                    stats['composite_score'] = round(weighted_sum / 1.0, 1)
+                else:
+                    stats['composite_score'] = 0
+            
+            # Save to database
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                saved = 0
+                for name, stats in all_players.items():
+                    try:
+                        cursor.execute("""
+                            INSERT OR REPLACE INTO player_performance_stats
+                            (player_name, scoring_avg, driving_distance, driving_accuracy,
+                             gir_pct, putts_per_hole, birdies_per_round,
+                             scoring_avg_rank, driving_distance_rank, driving_accuracy_rank,
+                             gir_pct_rank, putts_per_hole_rank, birdies_per_round_rank,
+                             composite_score, last_updated)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                        """, (
+                            name,
+                            stats.get('scoring_avg'),
+                            stats.get('driving_distance'),
+                            stats.get('driving_accuracy'),
+                            stats.get('gir_pct'),
+                            stats.get('putts_per_hole'),
+                            stats.get('birdies_per_round'),
+                            stats.get('scoring_avg_rank'),
+                            stats.get('driving_distance_rank'),
+                            stats.get('driving_accuracy_rank'),
+                            stats.get('gir_pct_rank'),
+                            stats.get('putts_per_hole_rank'),
+                            stats.get('birdies_per_round_rank'),
+                            stats.get('composite_score', 0),
+                        ))
+                        saved += 1
+                    except Exception as e:
+                        print(f"   ⚠️  Error saving {name}: {e}")
+                
+                conn.commit()
+                print(f"   ✅ Saved performance stats for {saved} players")
+            
+            return True
+            
+        except Exception as e:
+            print(f"   ❌ Error scraping performance stats: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
     def get_current_tournament(self):
         """Get current tournament info"""
         try:
