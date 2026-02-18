@@ -206,12 +206,13 @@ def player_card(player_data, tournament_info):
         perf_name = player_data.get('player_name', '')
         try:
             import sqlite3
-            perf_conn = sqlite3.connect(st.session_state.db_manager.db_path)
-            perf_row = perf_conn.execute(
-                "SELECT scoring_avg, driving_distance, driving_accuracy, gir_pct, putts_per_hole, birdies_per_round, scoring_avg_rank, driving_distance_rank, driving_accuracy_rank, gir_pct_rank, putts_per_hole_rank, birdies_per_round_rank, composite_score FROM player_performance_stats WHERE player_name = ?",
-                (perf_name,)
-            ).fetchone()
-            perf_conn.close()
+            with st.session_state.db_manager._get_conn() as perf_conn:
+                perf_cursor = perf_conn.cursor()
+                perf_cursor.execute(
+                    "SELECT scoring_avg, driving_distance, driving_accuracy, gir_pct, putts_per_hole, birdies_per_round, scoring_avg_rank, driving_distance_rank, driving_accuracy_rank, gir_pct_rank, putts_per_hole_rank, birdies_per_round_rank, composite_score FROM player_performance_stats WHERE player_name = ?",
+                    (perf_name,)
+                )
+                perf_row = perf_cursor.fetchone()
             if perf_row:
                 st.subheader("📈 Season Performance Stats")
                 pc1, pc2, pc3, pc4, pc5, pc6 = st.columns(6)
