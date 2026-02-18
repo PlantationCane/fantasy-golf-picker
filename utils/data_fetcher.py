@@ -7,6 +7,12 @@ import sqlite3
 import json
 import time
 
+try:
+    from db_connection import get_connection
+    HAS_DB_WRAPPER = True
+except ImportError:
+    HAS_DB_WRAPPER = False
+
 class PGADataFetcher:
     """Fetches data from PGA Tour and database"""
     
@@ -19,25 +25,135 @@ class PGADataFetcher:
         self.current_tournament = None
         self.player_cache = {}
         self.db_path = Path(__file__).parent.parent / "pga_fantasy.db"
+
+    def _get_conn(self):
+        """Get database connection (cloud or local)"""
+        if HAS_DB_WRAPPER:
+            return get_connection(str(self.db_path))
+        return sqlite3.connect(str(self.db_path))
     
     def get_current_tournament(self):
-        """Get current week's tournament information"""
-        # Hardcoded for Genesis Invitational
-        tournament_info = {
-            'name': 'The Genesis Invitational',
-            'dates': 'Feb 13-16, 2026',
-            'course': 'Riviera Country Club',
-            'purse': '$20,000,000',
-            'tournament_id': 'r2026008'
-        }
-        
-        self.current_tournament = tournament_info
-        return tournament_info
+        """Get current week's tournament information from ESPN API"""
+        try:
+            # Fetch live tournament data from ESPN
+            response = requests.get('https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard', timeout=10)
+            data = response.json()
+            
+            events = data.get('events', [])
+            
+            # Look for in-progress or scheduled tournament
+            for event in events:
+                status = event.get('status', {}).get('type', {}).get('name', '')
+                
+                if status in ['STATUS_IN_PROGRESS', 'STATUS_SCHEDULED']:
+                    # Extract tournament info
+                    name = event.get('name', 'Unknown Tournament')
+                    
+                    # Get course name from competitions
+                    course = 'TBD'
+                    competitions = event.get('competitions', [])
+                    if competitions:
+                        venue = competitions[0].get('venue', {})
+                        course = venue.get('fullName', 'TBD')
+                    
+                    # Get dates
+                    date_str = event.get('date', '')
+                    dates = 'TBD'
+                    if date_str:
+                        try:
+                            start_date = datetime.strptime(date_str[:10], '%Y-%m-%d')
+                            end_date = start_date + timedelta(days=3)
+                            dates = f"{start_date.strftime('%b %d')}-{end_date.strftime('%d')}, {start_date.year}"
+                        except:
+                            dates = date_str[:10]
+                    
+                    tournament_info = {
+                        'name': name,
+                        'dates': dates,
+                        'course': course,
+                        'purse': 'TBD',
+                        'tournament_id': event.get('id', '')
+                    }
+                    
+                    self.current_tournament = tournament_info
+                    return tournament_info
+            
+            # No in-progress/scheduled event found — use calendar to find next upcoming
+            leagues = data.get('leagues', [])
+            if leagues:
+                calendar = leagues[0].get('calendar', [])
+                now = datetime.utcnow()
+                
+                for entry in calendar:
+                    start_str = entry.get('startDate', '')
+                    if not start_str:
+                        continue
+                    try:
+                        start_date = datetime.strptime(start_str[:10], '%Y-%m-%d')
+                    except:
+                        continue
+                    
+                    # Find the next tournament that hasn't ended yet
+                    end_str = entry.get('endDate', start_str)
+                    try:
+                        end_date = datetime.strptime(end_str[:10], '%Y-%m-%d')
+                    except:
+                        end_date = start_date + timedelta(days=3)
+                    
+                    if end_date.date() >= (now - timedelta(days=1)).date():
+                        name = entry.get('label', 'Unknown Tournament')
+                        event_id = entry.get('id', '')
+                        dates = f"{start_date.strftime('%b %d')}-{end_date.strftime('%d')}, {start_date.year}"
+                        
+                        # Try to get venue from the event detail API
+                        course = 'TBD'
+                        try:
+                            detail_url = f"https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard?dates={start_date.strftime('%Y%m%d')}"
+                            detail_resp = requests.get(detail_url, timeout=10)
+                            detail_data = detail_resp.json()
+                            for evt in detail_data.get('events', []):
+                                comps = evt.get('competitions', [])
+                                if comps:
+                                    venue = comps[0].get('venue', {})
+                                    course = venue.get('fullName', 'TBD')
+                                    break
+                        except:
+                            pass
+                        
+                        tournament_info = {
+                            'name': name,
+                            'dates': dates,
+                            'course': course,
+                            'purse': 'TBD',
+                            'tournament_id': event_id
+                        }
+                        
+                        self.current_tournament = tournament_info
+                        return tournament_info
+            
+            # Nothing found at all
+            return {
+                'name': 'No Current Tournament',
+                'dates': 'TBD',
+                'course': 'TBD',
+                'purse': 'TBD',
+                'tournament_id': ''
+            }
+            
+        except Exception as e:
+            print(f"Error fetching current tournament: {e}")
+            return {
+                'name': 'Tournament Data Unavailable',
+                'dates': 'TBD',
+                'course': 'TBD',
+                'purse': 'TBD',
+                'tournament_id': ''
+            }
     
     def get_tournament_field(self, tournament_id=None):
         """Get list of players with 2026 tournament results"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_conn() as conn:
                 # ONLY players with 2026 results - reduces from 833 to ~194
                 query = """
                     SELECT DISTINCT player_name
@@ -67,7 +183,7 @@ class PGADataFetcher:
                     return data
             
             # Fetch from database
-            with sqlite3.connect(self.db_path) as conn:
+            with self._get_conn() as conn:
                 # Get player stats
                 cursor = conn.cursor()
                 cursor.execute("""
@@ -105,47 +221,80 @@ class PGADataFetcher:
                     ORDER BY tournament_date DESC
                 """, conn, params=(player_name,))
                 
-                # Get Riviera course history (aggregated stats)
-                course_history_df = pd.read_sql_query("""
-                    SELECT appearances as 'Appearances',
-                           wins as 'Wins',
-                           top_5s as 'Top 5s',
-                           top_10s as 'Top 10s',
-                           avg_finish as 'Avg Finish',
-                           best_finish as 'Best',
-                           last_played as 'Last Played'
-                    FROM course_history
-                    WHERE player_name = ? AND course_name LIKE '%Riviera%'
-                    LIMIT 1
-                """, conn, params=(player_name,))
+                # Get tournament history - dynamic based on current tournament
+                if tournament_name:
+                    # Extract key tournament identifier (e.g., "Pebble Beach" from "AT&T Pebble Beach Pro-Am")
+                    # Common keywords to identify tournaments
+                    tournament_keywords = ['Pebble Beach', 'Genesis', 'Memorial', 'Players', 'Masters', 
+                                         'PGA Championship', 'U.S. Open', 'Open Championship', 'Phoenix',
+                                         'Honda Classic', 'Arnold Palmer', 'Wells Fargo', 'Byron Nelson']
+                    
+                    # Find matching keyword in tournament name
+                    search_term = None
+                    for keyword in tournament_keywords:
+                        if keyword.lower() in tournament_name.lower():
+                            search_term = keyword
+                            break
+                    
+                    # If no keyword match, use the last 2-3 significant words
+                    if not search_term:
+                        words = tournament_name.split()
+                        search_term = ' '.join(words[-2:]) if len(words) >= 2 else tournament_name
+                    
+                    # Get detailed year-by-year tournament history
+                    detailed_history_df = pd.read_sql_query("""
+                        SELECT year as 'Year',
+                               finish_position as 'Finish',
+                               score as 'Score',
+                               earnings as 'Earnings',
+                               sg_total as 'SG Total'
+                        FROM historical_results
+                        WHERE player_name = ? AND tournament_name LIKE ?
+                        ORDER BY year DESC
+                    """, conn, params=(player_name, f'%{search_term}%'))
+                    
+                    # Compute aggregated stats from detailed history
+                    if not detailed_history_df.empty:
+                        appearances = len(detailed_history_df)
+                        
+                        # Parse finishes (handle "T3", "CUT", "MC", "WD", etc.)
+                        finishes = []
+                        for f in detailed_history_df['Finish']:
+                            try:
+                                f_str = str(f).strip().upper()
+                                if f_str in ('CUT', 'MC', 'MDF', 'WD', 'DQ', 'DNS', 'NONE', 'NAN'):
+                                    finishes.append(70)
+                                else:
+                                    finishes.append(int(f_str.replace('T', '')))
+                            except:
+                                pass
+                        
+                        if finishes:
+                            wins = sum(1 for f in finishes if f == 1)
+                            top_5s = sum(1 for f in finishes if f <= 5)
+                            top_10s = sum(1 for f in finishes if f <= 10)
+                            avg_finish = sum(finishes) / len(finishes)
+                            best_finish = min(finishes) if finishes else 0
+                            last_year = detailed_history_df['Year'].iloc[0] if 'Year' in detailed_history_df else None
+                            
+                            course_history_df = pd.DataFrame([{
+                                'Appearances': appearances,
+                                'Wins': wins,
+                                'Top 5s': top_5s,
+                                'Top 10s': top_10s,
+                                'Avg Finish': round(avg_finish, 1),
+                                'Best': best_finish,
+                                'Last Played': last_year
+                            }])
+                        else:
+                            course_history_df = pd.DataFrame()
+                    else:
+                        course_history_df = pd.DataFrame()
+                else:
+                    # No tournament specified - return empty DataFrames
+                    course_history_df = pd.DataFrame()
+                    detailed_history_df = pd.DataFrame()
                 
-                # Get detailed year-by-year Riviera history
-                detailed_history_df = pd.read_sql_query("""
-                    SELECT year as 'Year',
-                           finish_position as 'Finish',
-                           score as 'Score',
-                           earnings as 'Earnings',
-                           sg_total as 'SG Total'
-                    FROM historical_results
-                    WHERE player_name = ? AND course_name LIKE '%Riviera%'
-                    ORDER BY year DESC
-                """, conn, params=(player_name,))
-
-                # Recompute avg_finish from detailed history so CUTs count as 70th place
-                if not detailed_history_df.empty and not course_history_df.empty:
-                    finishes = []
-                    for f in detailed_history_df['Finish']:
-                        try:
-                            f_str = str(f).strip().upper()
-                            if f_str in ('CUT', 'MC', 'MDF', 'WD', 'DQ', 'DNS', 'NONE', 'NAN'):
-                                finishes.append(70)
-                            else:
-                                finishes.append(int(f_str.replace('T', '')))
-                        except:
-                            pass
-                    if finishes:
-                        course_history_df.at[0, 'Avg Finish'] = round(sum(finishes) / len(finishes), 1)
-
                 stats = {
                     'name': player_name,
                     'player_id': player_id,
@@ -214,7 +363,7 @@ class PGADataFetcher:
         stats_detail = ""
         if player_name:
             try:
-                with sqlite3.connect(self.db_path) as conn:
+                with self._get_conn() as conn:
                     cursor = conn.cursor()
                     cursor.execute("""
                         SELECT recent_events, avg_finish, best_finish
