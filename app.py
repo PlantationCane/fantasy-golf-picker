@@ -165,16 +165,56 @@ def player_card(player_data, tournament_info):
         
         with col2:
             st.metric("Season Earnings", f"${player_data.get('season_money', 0):,.0f}")
-            st.metric("SG: Total", f"{player_data.get('sg_total', 0):.2f}")
-        
-        with col3:
             st.metric("Recent Form", player_data.get('recent_form', 'N/A'))
+
+        with col3:
             st.metric("Course History", player_data.get('course_history', 'N/A'))
-        
+            st.metric("Perf Score", f"{player_data.get('composite_score', 0):.1f}")
+
         with col4:
-            st.metric("SG: OTT", f"{player_data.get('sg_ott', 0):.2f}")
-            st.metric("SG: App", f"{player_data.get('sg_app', 0):.2f}")
-        
+            st.metric("Scoring Avg", player_data.get('scoring_avg') or 'N/A')
+            st.metric("GIR %", player_data.get('gir_pct') or 'N/A')
+
+        # ESPN Performance Stats
+        perf_name = player_data.get('player_name', '')
+        try:
+            import sqlite3
+            perf_conn = st.session_state.db_manager._get_conn()
+            perf_row = perf_conn.execute(
+                "SELECT scoring_avg, driving_distance, driving_accuracy, gir_pct, putts_per_hole, birdies_per_round, scoring_avg_rank, driving_distance_rank, driving_accuracy_rank, gir_pct_rank, putts_per_hole_rank, birdies_per_round_rank, composite_score FROM player_performance_stats WHERE player_name = ?",
+                (perf_name,)
+            ).fetchone()
+            perf_conn.close()
+            if perf_row:
+                st.subheader("📈 Season Performance Stats")
+                pc1, pc2, pc3, pc4, pc5, pc6 = st.columns(6)
+                with pc1:
+                    val = f"{perf_row[0]:.1f}" if perf_row[0] else "N/A"
+                    rnk = f"#{perf_row[6]}" if perf_row[6] else ""
+                    st.metric("Scoring Avg", val, rnk)
+                with pc2:
+                    val = f"{perf_row[1]:.1f}" if perf_row[1] else "N/A"
+                    rnk = f"#{perf_row[7]}" if perf_row[7] else ""
+                    st.metric("Drive Dist", val, rnk)
+                with pc3:
+                    val = f"{perf_row[2]:.1f}%" if perf_row[2] else "N/A"
+                    rnk = f"#{perf_row[8]}" if perf_row[8] else ""
+                    st.metric("Drive Acc", val, rnk)
+                with pc4:
+                    val = f"{perf_row[3]:.1f}%" if perf_row[3] else "N/A"
+                    rnk = f"#{perf_row[9]}" if perf_row[9] else ""
+                    st.metric("GIR %", val, rnk)
+                with pc5:
+                    val = f"{perf_row[4]:.3f}" if perf_row[4] else "N/A"
+                    rnk = f"#{perf_row[10]}" if perf_row[10] else ""
+                    st.metric("Putts/Hole", val, rnk)
+                with pc6:
+                    val = f"{perf_row[5]:.2f}" if perf_row[5] else "N/A"
+                    rnk = f"#{perf_row[11]}" if perf_row[11] else ""
+                    st.metric("Birdies/Rd", val, rnk)
+        except Exception:
+            pass
+
         # Detailed stats sections
         st.divider()
         
