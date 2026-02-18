@@ -20,6 +20,7 @@ WEEKLY_TABLES = [
     'tournament_results_2026',
     'player_stats',
     'player_recent_form',
+    'player_performance_stats',
     'picks',
     'used_players',
 ]
