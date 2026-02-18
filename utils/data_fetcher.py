@@ -57,7 +57,7 @@ class PGADataFetcher:
             print(f"Error fetching field: {e}")
             return pd.DataFrame()
     
-    def get_player_stats(self, player_name, player_id=None):
+    def get_player_stats(self, player_name, player_id=None, tournament_name=None):
         """Get comprehensive player statistics from database"""
         try:
             # Check cache first
