@@ -7,3 +7,4 @@ pga_fantasy.db
 *.zip
 *.json
 *.backup
+turso_secrets.bat 
