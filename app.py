@@ -180,10 +180,12 @@ def player_card(player_data, tournament_info):
         try:
             import sqlite3
             perf_conn = st.session_state.db_manager._get_conn()
-            perf_row = perf_conn.execute(
+            perf_cursor = perf_conn.cursor()
+            perf_cursor.execute(
                 "SELECT scoring_avg, driving_distance, driving_accuracy, gir_pct, putts_per_hole, birdies_per_round, scoring_avg_rank, driving_distance_rank, driving_accuracy_rank, gir_pct_rank, putts_per_hole_rank, birdies_per_round_rank, composite_score FROM player_performance_stats WHERE player_name = ?",
                 (perf_name,)
-            ).fetchone()
+            )
+            perf_row = perf_cursor.fetchone()
             perf_conn.close()
             if perf_row:
                 st.subheader("📈 Season Performance Stats")
