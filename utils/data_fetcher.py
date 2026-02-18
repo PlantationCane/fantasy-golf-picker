@@ -130,7 +130,22 @@ class PGADataFetcher:
                     WHERE player_name = ? AND course_name LIKE '%Riviera%'
                     ORDER BY year DESC
                 """, conn, params=(player_name,))
-                
+
+                # Recompute avg_finish from detailed history so CUTs count as 70th place
+                if not detailed_history_df.empty and not course_history_df.empty:
+                    finishes = []
+                    for f in detailed_history_df['Finish']:
+                        try:
+                            f_str = str(f).strip().upper()
+                            if f_str in ('CUT', 'MC', 'MDF', 'WD', 'DQ', 'DNS', 'NONE', 'NAN'):
+                                finishes.append(70)
+                            else:
+                                finishes.append(int(f_str.replace('T', '')))
+                        except:
+                            pass
+                    if finishes:
+                        course_history_df.at[0, 'Avg Finish'] = round(sum(finishes) / len(finishes), 1)
+
                 stats = {
                     'name': player_name,
                     'player_id': player_id,
