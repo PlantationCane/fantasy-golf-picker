@@ -151,24 +151,57 @@ class PGADataFetcher:
             }
     
     def get_tournament_field(self, tournament_id=None):
-        """Get list of players with 2026 tournament results"""
+        """Get this week's actual field from ESPN, with DB fallback"""
+
+        # Step 1: Try ESPN scoreboard for real field
+        espn_players = []
+        try:
+            url = 'https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard'
+            resp = requests.get(url, timeout=10)
+            data = resp.json()
+
+            target_id = str(tournament_id) if tournament_id else None
+
+            for event in data.get('events', []):
+                # Match by ID if we have one, otherwise take first event
+                if target_id and str(event.get('id', '')) != target_id:
+                    continue
+                for comp in event.get('competitions', []):
+                    for competitor in comp.get('competitors', []):
+                        athlete = competitor.get('athlete', {})
+                        name = athlete.get('displayName', '')
+                        if name:
+                            espn_players.append(name)
+                if espn_players:
+                    break  # found the right event
+
+            if espn_players:
+                print(f"  ESPN field: {len(espn_players)} players loaded")
+                df = pd.DataFrame({'player_name': sorted(set(espn_players))})
+                df['player_id'] = None
+                df['fedex_rank'] = None
+                df['world_rank'] = None
+                return df
+
+        except Exception as e:
+            print(f"  ESPN field fetch failed: {e} -- falling back to DB")
+
+        # Step 2: Fall back to all 2026 players in DB
+        print("  Using DB fallback for tournament field")
         try:
             with self._get_conn() as conn:
-                # ONLY players with 2026 results - reduces from 833 to ~194
                 query = """
                     SELECT DISTINCT player_name
                     FROM tournament_results_2026
                     ORDER BY player_name
                 """
-                
                 df = pd.read_sql_query(query, conn)
                 df.columns = ['player_name']
                 df['player_id'] = None
                 df['fedex_rank'] = None
                 df['world_rank'] = None
-                
                 return df
-                
+
         except Exception as e:
             print(f"Error fetching field: {e}")
             return pd.DataFrame()
@@ -176,9 +209,10 @@ class PGADataFetcher:
     def get_player_stats(self, player_name, player_id=None, tournament_name=None):
         """Get comprehensive player statistics from database"""
         try:
-            # Check cache first
-            if player_name in self.player_cache:
-                cached_time, data = self.player_cache[player_name]
+            # Check cache first (key includes tournament so history isn't stale across tournaments)
+            cache_key = f"{player_name}|{tournament_name or ''}"
+            if cache_key in self.player_cache:
+                cached_time, data = self.player_cache[cache_key]
                 if datetime.now() - cached_time < timedelta(hours=24):
                     return data
             
@@ -223,35 +257,69 @@ class PGADataFetcher:
                 
                 # Get tournament history - dynamic based on current tournament
                 if tournament_name:
-                    # Extract key tournament identifier (e.g., "Pebble Beach" from "AT&T Pebble Beach Pro-Am")
-                    # Common keywords to identify tournaments
-                    tournament_keywords = ['Pebble Beach', 'Genesis', 'Memorial', 'Players', 'Masters', 
-                                         'PGA Championship', 'U.S. Open', 'Open Championship', 'Phoenix',
-                                         'Honda Classic', 'Arnold Palmer', 'Wells Fargo', 'Byron Nelson']
-                    
-                    # Find matching keyword in tournament name
-                    search_term = None
-                    for keyword in tournament_keywords:
+                    # Load aliases from JSON config (editable without touching code)
+                    import difflib
+                    aliases_path = Path(__file__).parent.parent / "tournament_aliases.json"
+                    TOURNAMENT_ALIASES = {}
+                    if aliases_path.exists():
+                        try:
+                            with open(aliases_path) as f:
+                                raw = json.load(f)
+                            # Strip comment keys
+                            TOURNAMENT_ALIASES = {k: v for k, v in raw.items() if not k.startswith('_')}
+                        except Exception as e:
+                            print(f"Warning: Could not load tournament_aliases.json: {e}")
+
+                    # Step 1: Try keyword match from aliases
+                    search_terms = None
+                    matched_via = None
+                    for keyword, aliases in TOURNAMENT_ALIASES.items():
                         if keyword.lower() in tournament_name.lower():
-                            search_term = keyword
+                            search_terms = aliases
+                            matched_via = f"alias key '{keyword}'"
                             break
-                    
-                    # If no keyword match, use the last 2-3 significant words
-                    if not search_term:
-                        words = tournament_name.split()
-                        search_term = ' '.join(words[-2:]) if len(words) >= 2 else tournament_name
-                    
+
+                    # Step 2: Fuzzy fallback — find close DB tournament names
+                    if not search_terms:
+                        try:
+                            all_db_names = pd.read_sql_query(
+                                "SELECT DISTINCT tournament_name FROM historical_results", conn
+                            )['tournament_name'].tolist()
+                            close_matches = difflib.get_close_matches(
+                                tournament_name, all_db_names, n=5, cutoff=0.4
+                            )
+                            if close_matches:
+                                search_terms = close_matches
+                                matched_via = f"fuzzy match {close_matches}"
+                            else:
+                                # Last resort: use last 2 words
+                                words = tournament_name.split()
+                                fallback = ' '.join(words[-2:]) if len(words) >= 2 else tournament_name
+                                search_terms = [fallback]
+                                matched_via = f"last-resort words '{fallback}'"
+                        except Exception as e:
+                            words = tournament_name.split()
+                            fallback = ' '.join(words[-2:]) if len(words) >= 2 else tournament_name
+                            search_terms = [fallback]
+                            matched_via = f"fallback (fuzzy error: {e})"
+
+                    print(f"  Tournament history lookup: '{tournament_name}' → {matched_via}")
+
+                    # Build OR LIKE query for all name variants
+                    like_clauses = ' OR '.join(['tournament_name LIKE ?' for _ in search_terms])
+                    like_params = [player_name] + [f'%{t}%' for t in search_terms]
+
                     # Get detailed year-by-year tournament history
-                    detailed_history_df = pd.read_sql_query("""
+                    detailed_history_df = pd.read_sql_query(f"""
                         SELECT year as 'Year',
                                finish_position as 'Finish',
                                score as 'Score',
                                earnings as 'Earnings',
                                sg_total as 'SG Total'
                         FROM historical_results
-                        WHERE player_name = ? AND tournament_name LIKE ?
+                        WHERE player_name = ? AND ({like_clauses})
                         ORDER BY year DESC
-                    """, conn, params=(player_name, f'%{search_term}%'))
+                    """, conn, params=like_params)
                     
                     # Compute aggregated stats from detailed history
                     if not detailed_history_df.empty:
@@ -314,7 +382,7 @@ class PGADataFetcher:
                 }
             
             # Cache the data
-            self.player_cache[player_name] = (datetime.now(), stats)
+            self.player_cache[cache_key] = (datetime.now(), stats)
             
             return stats
             
