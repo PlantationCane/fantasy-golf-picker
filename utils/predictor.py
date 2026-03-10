@@ -62,7 +62,10 @@ class WinPredictor:
                 'sg_arg': player_stats.get('sg_arg', 0),
                 'sg_putt': player_stats.get('sg_putt', 0),
                 'recent_form': player_stats.get('recent_form', 'N/A'),
-                'course_history': self._format_course_history(player_stats.get('course_history')),
+                'course_history': self._format_course_history(
+                    player_stats.get('course_history'),
+                    player_stats.get('detailed_course_history')
+                ),
                 'is_used': is_used
             })
         
@@ -107,7 +110,8 @@ class WinPredictor:
         
         # Course history score
         course_history = player_stats.get('course_history', pd.DataFrame())
-        course_score = self._calculate_course_history_score(course_history)
+        detailed_course_history = player_stats.get('detailed_course_history', pd.DataFrame())
+        course_score = self._calculate_course_history_score(course_history, detailed_course_history)
         
         # Weighted average
         win_prob = (
@@ -123,43 +127,113 @@ class WinPredictor:
         
         return round(win_prob, 2)
     
-    def _calculate_course_history_score(self, course_history_df):
-        """Calculate score based on course history (aggregated stats)"""
+    def _calculate_course_history_score(self, course_history_df, detailed_history_df=None):
+        """Calculate score based on course history with recency weighting"""
         if course_history_df.empty:
             return 50  # Neutral score if no history
-        
+
         try:
-            # Get the single row of aggregated stats
+            current_year = datetime.now().year
+
+            # If we have detailed year-by-year data, use recency-weighted scoring
+            if detailed_history_df is not None and not detailed_history_df.empty:
+                weighted_finish_sum = 0
+                weight_total = 0
+                weighted_wins = 0
+                weighted_top5s = 0
+                weighted_top10s = 0
+
+                for _, row in detailed_history_df.iterrows():
+                    try:
+                        year = int(row.get('Year', current_year))
+                        f_str = str(row.get('Finish', '')).strip().upper()
+                        if f_str in ('CUT', 'MC', 'MDF', 'WD', 'DQ', 'DNS', 'NONE', 'NAN'):
+                            finish = 70
+                        else:
+                            finish = int(f_str.replace('T', ''))
+                    except:
+                        continue
+
+                    # Sliding scale: 1.0 for current year, -0.15 per year, floor 0.30
+                    age = current_year - year
+                    weight = max(0.30, 1.0 - age * 0.15)
+
+                    weighted_finish_sum += finish * weight
+                    weight_total += weight
+                    if finish == 1:
+                        weighted_wins += weight
+                    if finish <= 5:
+                        weighted_top5s += weight
+                    if finish <= 10:
+                        weighted_top10s += weight
+
+                if weight_total == 0:
+                    return 50
+
+                weighted_avg = weighted_finish_sum / weight_total
+
+                score = 50  # Start neutral
+
+                # Wins — tempered by weighted avg finish
+                if weighted_wins > 0:
+                    win_bonus = 20 * weighted_wins
+                    if weighted_avg > 40:
+                        win_bonus *= 0.4
+                    elif weighted_avg > 30:
+                        win_bonus *= 0.7
+                    score += win_bonus
+
+                score += weighted_top5s * 8
+                score += weighted_top10s * 4
+
+                # Weighted avg finish contribution
+                if weighted_avg < 20:
+                    score += 25
+                elif weighted_avg < 30:
+                    score += 15
+                elif weighted_avg < 40:
+                    score += 5
+                elif weighted_avg > 50:
+                    score -= 10
+
+                appearances = len(detailed_history_df)
+                if appearances >= 5:
+                    score += 5
+
+                return min(100, max(20, score))
+
+            # Fallback: use aggregated stats (no recency weighting)
             row = course_history_df.iloc[0]
-            
             wins = row.get('Wins', 0) or 0
             top_5s = row.get('Top 5s', 0) or 0
             top_10s = row.get('Top 10s', 0) or 0
             avg_finish = row.get('Avg Finish', 50)
             appearances = row.get('Appearances', 0) or 0
-            
-            # Score based on performance
-            score = 50  # Start neutral
-            
-            # Wins are huge
+
+            score = 50
             if wins > 0:
-                score += 30 * wins
-            
-            # Top finishes matter
-            score += top_5s * 10
-            score += top_10s * 5
-            
-            # Average finish (lower is better)
-            if avg_finish and avg_finish < 30:
-                score += (30 - avg_finish) * 2
-            
-            # Experience at course helps a bit
+                win_bonus = 20 * wins
+                if avg_finish and avg_finish > 40:
+                    win_bonus *= 0.4
+                elif avg_finish and avg_finish > 30:
+                    win_bonus *= 0.7
+                score += win_bonus
+            score += top_5s * 8
+            score += top_10s * 4
+            if avg_finish:
+                if avg_finish < 20:
+                    score += 25
+                elif avg_finish < 30:
+                    score += 15
+                elif avg_finish < 40:
+                    score += 5
+                elif avg_finish > 50:
+                    score -= 10
             if appearances >= 5:
                 score += 5
-            
-            # Cap at 100
+
             return min(100, max(20, score))
-            
+
         except Exception as e:
             print(f"Error calculating course history score: {e}")
             return 50
@@ -185,8 +259,8 @@ class WinPredictor:
         
         return round(value_score, 2)
     
-    def _format_course_history(self, course_history_df):
-        """Format course history for display (aggregated stats with details)"""
+    def _format_course_history(self, course_history_df, detailed_history_df=None):
+        """Format course history for display with recency-weighted rating"""
         if course_history_df is None or course_history_df.empty:
             return "No history"
         
@@ -199,7 +273,7 @@ class WinPredictor:
             appearances = row.get('Appearances', 0) or 0
             best = row.get('Best', 'N/A')
             
-            # Build stats detail string
+            # Build stats detail string (always uses career totals for display)
             stats = []
             if wins > 0:
                 stats.append(f"{int(wins)} win{'s' if wins > 1 else ''}")
@@ -211,17 +285,52 @@ class WinPredictor:
                 stats.append(f"Avg: {avg_finish:.1f}")
             if not stats and appearances > 0:
                 stats.append(f"{int(appearances)} apps")
-            
             stats_str = f" ({', '.join(stats)})" if stats else ""
-            
-            # Rate based on performance
-            if wins > 0:
+
+            # Use recency-weighted stats for the RATING LABEL if detailed data available
+            if detailed_history_df is not None and not detailed_history_df.empty:
+                current_year = datetime.now().year
+                weighted_finish_sum = 0
+                weight_total = 0
+                weighted_wins = 0
+                weighted_top10s = 0
+
+                for _, r in detailed_history_df.iterrows():
+                    try:
+                        year = int(r.get('Year', current_year))
+                        f_str = str(r.get('Finish', '')).strip().upper()
+                        finish = 70 if f_str in ('CUT', 'MC', 'MDF', 'WD', 'DQ', 'DNS', 'NONE', 'NAN') \
+                            else int(f_str.replace('T', ''))
+                    except:
+                        continue
+                    age = current_year - year
+                    weight = max(0.30, 1.0 - age * 0.15)
+                    weighted_finish_sum += finish * weight
+                    weight_total += weight
+                    if finish == 1:
+                        weighted_wins += weight
+                    if finish <= 10:
+                        weighted_top10s += weight
+
+                w_avg = weighted_finish_sum / weight_total if weight_total else avg_finish
+                avg_ok = w_avg <= 35
+                avg_decent = w_avg <= 50
+
+            else:
+                # Fall back to career averages
+                weighted_wins = wins
+                weighted_top10s = top_10s
+                avg_ok = avg_finish and avg_finish <= 35
+                avg_decent = avg_finish and avg_finish <= 50
+
+            # Rate based on recency-weighted performance
+            if (weighted_wins > 0 and avg_ok) or (weighted_top10s >= 3 and avg_ok):
                 return f"🔥 Excellent{stats_str}"
-            elif top_10s >= 3:
-                return f"🔥 Excellent{stats_str}"
-            elif top_10s >= 1:
+            elif weighted_wins > 0 and avg_decent:
                 return f"✅ Good{stats_str}"
-            elif avg_finish and avg_finish < 40:
+            elif weighted_top10s >= 3 or (weighted_top10s >= 1 and avg_ok):
+                return f"✅ Good{stats_str}"
+            elif weighted_top10s >= 1 or (avg_finish and avg_finish < 40):
                 return f"🔶 Average{stats_str}"
             else:
                 return f"🔻 Poor{stats_str}" if stats_str else "🔻 Poor"
