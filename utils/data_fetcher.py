@@ -209,10 +209,9 @@ class PGADataFetcher:
     def get_player_stats(self, player_name, player_id=None, tournament_name=None):
         """Get comprehensive player statistics from database"""
         try:
-            # Check cache first (key includes tournament so history isn't stale across tournaments)
-            cache_key = f"{player_name}|{tournament_name or ''}"
-            if cache_key in self.player_cache:
-                cached_time, data = self.player_cache[cache_key]
+            # Check cache first
+            if player_name in self.player_cache:
+                cached_time, data = self.player_cache[player_name]
                 if datetime.now() - cached_time < timedelta(hours=24):
                     return data
             
@@ -311,15 +310,32 @@ class PGADataFetcher:
 
                     # Get detailed year-by-year tournament history
                     detailed_history_df = pd.read_sql_query(f"""
-                        SELECT year as 'Year',
+                        SELECT DISTINCT year as 'Year',
                                finish_position as 'Finish',
                                score as 'Score',
                                earnings as 'Earnings',
-                               sg_total as 'SG Total'
+                               sg_total as 'SG Total',
+                               tournament_name as 'Tournament'
                         FROM historical_results
                         WHERE player_name = ? AND ({like_clauses})
                         ORDER BY year DESC
                     """, conn, params=like_params)
+
+                    # If multiple rows per year (from different matching tournament names),
+                    # keep the row whose tournament_name most closely matches the target
+                    if not detailed_history_df.empty and detailed_history_df.duplicated(subset=['Year']).any():
+                        import difflib
+                        def best_match_score(t_name):
+                            return difflib.SequenceMatcher(None, tournament_name.lower(), str(t_name).lower()).ratio()
+                        detailed_history_df['_match'] = detailed_history_df['Tournament'].apply(best_match_score)
+                        detailed_history_df = (
+                            detailed_history_df
+                            .sort_values('_match', ascending=False)
+                            .drop_duplicates(subset=['Year'], keep='first')
+                            .sort_values('Year', ascending=False)
+                            .reset_index(drop=True)
+                        )
+                        detailed_history_df = detailed_history_df.drop(columns=['_match', 'Tournament'])
                     
                     # Compute aggregated stats from detailed history
                     if not detailed_history_df.empty:
@@ -382,7 +398,7 @@ class PGADataFetcher:
                 }
             
             # Cache the data
-            self.player_cache[cache_key] = (datetime.now(), stats)
+            self.player_cache[player_name] = (datetime.now(), stats)
             
             return stats
             
