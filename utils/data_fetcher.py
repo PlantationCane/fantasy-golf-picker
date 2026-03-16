@@ -7,11 +7,7 @@ import sqlite3
 import json
 import time
 
-try:
-    from db_connection import get_connection
-    HAS_DB_WRAPPER = True
-except ImportError:
-    HAS_DB_WRAPPER = False
+
 
 class PGADataFetcher:
     """Fetches data from PGA Tour and database"""
@@ -27,9 +23,7 @@ class PGADataFetcher:
         self.db_path = Path(__file__).parent.parent / "pga_fantasy.db"
 
     def _get_conn(self):
-        """Get database connection (cloud or local)"""
-        if HAS_DB_WRAPPER:
-            return get_connection(str(self.db_path))
+        """Get database connection (local SQLite)"""
         return sqlite3.connect(str(self.db_path))
     
     def get_current_tournament(self):

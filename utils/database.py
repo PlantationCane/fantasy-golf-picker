@@ -1,11 +1,6 @@
 import sqlite3
 import pandas as pd
 
-try:
-    from db_connection import get_connection
-    HAS_DB_WRAPPER = True
-except ImportError:
-    HAS_DB_WRAPPER = False
 from datetime import datetime
 from pathlib import Path
 
@@ -17,9 +12,7 @@ class DatabaseManager:
         self.init_database()
 
     def _get_conn(self):
-        """Get database connection (cloud or local)"""
-        if HAS_DB_WRAPPER:
-            return get_connection(str(self.db_path))
+        """Get database connection (local SQLite)"""
         return sqlite3.connect(str(self.db_path))
     
     def init_database(self):

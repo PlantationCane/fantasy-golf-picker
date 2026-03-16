@@ -151,13 +151,333 @@ def show_tournament_view():
     # Tournament course fit insights
     tournament_name = tournament_info.get('name', '')
     course_insights = {
-        'Genesis': '🎯 **Riviera favors:** Accurate iron players, creative short game (kikuyu rough), consistent ball strikers. Bombers have no advantage — precision wins here.',
-        'Pebble Beach': '🎯 **Pebble Beach favors:** All-around players who handle wind, links-style creativity, and cold weather. Scrambling ability is key.',
-        'Players': '🎯 **TPC Sawgrass favors:** Accurate drivers, strong iron play to small greens, steady nerves on 17. Avoid big hitters who spray it.',
-        'Masters': '🎯 **Augusta favors:** Long hitters who draw the ball, elite iron play into large greens, and superior putting on fast bentgrass.',
-        'Memorial': '🎯 **Muirfield Village favors:** Accurate ball strikers, strong iron play, good putters on bentgrass. Positioning off the tee matters.',
-        'Arnold Palmer': '🎯 **Bay Hill favors:** Long hitters who can attack the par 5s, strong approach play, and good putting.',
-        'Phoenix': '🎯 **TPC Scottsdale favors:** Birdie machines — low scoring, par 5 dominance, and players who thrive in party atmosphere.',
+        # ── SIGNATURE EVENTS ──────────────────────────────────────────────────
+        'Pebble Beach': (
+            '🎯 **Pebble Beach (AT&T Pro-Am) — What to look for:**\n\n'
+            'Three-course rotation (Pebble Beach, Spyglass Hill, Monterey Peninsula) rewards consistency across very different layouts. '
+            'Wind off the Pacific is a huge factor — favor players with links experience or wind-management skills. '
+            'Scrambling and creativity around greens matter more than raw stats here.\n\n'
+            '🏌️ Wind management & patience | 🎯 All-around game | 🏆 Multiple prior starts at Pebble | '
+            '💪 Players who thrive in cold, wet conditions'
+        ),
+        'Genesis': (
+            '🎯 **Riviera CC (Genesis Invitational) — What to look for:**\n\n'
+            'Kikuyu rough grabs club heads and requires exceptional short-game creativity. Bombers have zero advantage — '
+            'Riviera is a precision test from tee to green. GIR% and scrambling are the top predictors. '
+            'Course history is heavily predictive; past Riviera winners/contenders deserve a major boost.\n\n'
+            '🎯 Driving accuracy | 🏌️ Elite iron play & GIR% | ✂️ Creative short game | '
+            '🏆 Strong course history at Riviera'
+        ),
+        'Arnold Palmer': (
+            '🎯 **Bay Hill (Arnold Palmer Invitational) — What to look for:**\n\n'
+            'Long, demanding par-70 with one of the toughest closing stretches on tour (holes 16–18). '
+            'The par-4 18th over water rewards confident, long hitters. Winning scores ~-10 to -15.\n\n'
+            '🏌️ Driving distance advantage | 🎯 Elite approach play / GIR% | '
+            '🏆 Strong Bay Hill course history (3+ starts) | 💪 Closing ability under pressure | '
+            '🌊 Comfort on risk/reward finishing holes\n\n'
+            'Winner profile: Top-30 world ranking, 3+ prior Bay Hill starts, top-25 in both driving distance and approach. '
+            'Rory McIlroy (3× winner) and Scheffler are the prototypes. Fade first/second-timers here.'
+        ),
+        'RBC Heritage': (
+            '🎯 **Harbour Town (RBC Heritage) — What to look for:**\n\n'
+            'One of the most accuracy-dependent courses on tour. Pete Dye design with tiny greens, tree-lined fairways, '
+            'and a lighthouse finishing hole. Driving distance is nearly irrelevant — precision and touch win here. '
+            'Smaller, accurate players historically outperform bombers every year.\n\n'
+            '🎯 Driving accuracy (top priority) | ✂️ Precision wedge play | 🏌️ Small green management | '
+            '📏 Shorter accurate hitters over big bombers | 🏆 Repeat Harbour Town contenders'
+        ),
+        'Cadillac': (
+            '🎯 **Trump National Doral — Blue Monster (Cadillac Championship) — What to look for:**\n\n'
+            'The Blue Monster rewards long hitters who can handle firm, fast conditions and the famous water-lined 18th. '
+            'A new Signature Event in 2026 — expect elite fields and scoring pressure from the start. '
+            'Players comfortable in South Florida heat/humidity with strong par-5 scoring have a big edge.\n\n'
+            '🏌️ Driving distance | 🎯 Par-5 scoring efficiency | 💧 Comfort on risk/reward water holes | '
+            '🌡️ Experienced in warm, humid conditions | 🏆 Top-30 world ranking'
+        ),
+        'Truist': (
+            '🎯 **Quail Hollow (Truist Championship) — What to look for:**\n\n'
+            'Home of the infamous "Green Mile" (holes 16–18), one of the hardest closing stretches in golf. '
+            'Long, tree-lined track that demands both power and precision. Par-3 17th over water is pivotal. '
+            'Players must be long AND accurate — no shortcuts here.\n\n'
+            '🏌️ Driving distance + accuracy combo | 🎯 Elite iron play | 💪 Green Mile toughness | '
+            '🏆 Strong Quail Hollow history | Top-20 world-ranked players dominate here'
+        ),
+        'Travelers': (
+            '🎯 **TPC River Highlands (Travelers Championship) — What to look for:**\n\n'
+            'A scoring fest — one of the lowest-scoring events of the year. Relatively open layout rewards bombers '
+            'who can also putt. Birdie rate is the single best predictor of success here. '
+            'Look for players coming in with hot recent form and a hot putter.\n\n'
+            '🏌️ Driving distance | 🐦 Elite birdie rate | 🏌️ Hot putting form | '
+            '📈 Players on recent winning streaks | 💰 Good value week for high-upside picks'
+        ),
+        'Memorial': (
+            '🎯 **Muirfield Village (Memorial Tournament) — What to look for:**\n\n'
+            'Jack Nicklaus\'s demanding design celebrates its 50th anniversary in 2026. Positioning off the tee '
+            'matters more than distance — narrow fairways and deep rough punish inaccuracy. '
+            'Bentgrass greens reward elite putters. This event reliably crowns the best player that week.\n\n'
+            '🎯 Driving accuracy + positioning | 🏌️ Elite iron play to protected greens | '
+            '⛳ Strong putting on bentgrass | 🏆 Top-20 world ranking almost always wins here | '
+            'Course history is a strong predictor'
+        ),
+        # ── MAJORS ────────────────────────────────────────────────────────────
+        'Masters': (
+            '🎯 **Augusta National (The Masters) — What to look for:**\n\n'
+            'Augusta rewards right-to-left ball flight, long hitters who can reach all four par-5s in two, '
+            'and elite putters on the fastest bentgrass in the world. Familiarity is critical — '
+            'players with multiple top-10s here have a massive edge over first-timers.\n\n'
+            '🏌️ Distance + draw ball flight | 🎯 Elite iron play to large sloped greens | '
+            '⛳ Superior putting on ultra-fast bentgrass | 🏆 Par-5 birdie efficiency | '
+            'Multiple prior Augusta top-10s — this course rewards experience above almost all else'
+        ),
+        'PGA Championship': (
+            '🎯 **Aronimink GC (PGA Championship 2026) — What to look for:**\n\n'
+            'A classic Donald Ross design making its first major appearance. Ross courses reward precise iron play '
+            'into crowned, runoff greens — missing the green in the wrong spot leads to bogeys. '
+            'Scrambling and creativity around the greens will be at a premium. '
+            'Expect scoring to be tougher than typical modern majors.\n\n'
+            '🎯 Precise iron play to crowned greens | ✂️ Elite scrambling | '
+            '🏌️ Controlled ball flight (not just pure distance) | '
+            '🏆 Players who have excelled at classic/traditional parkland setups | '
+            'Adaptability to an unfamiliar course — prior Ross design experience helps'
+        ),
+        'U.S. Open': (
+            '🎯 **U.S. Open — What to look for:**\n\n'
+            'USGA setup: thick rough, firm fast greens, narrow fairways. Par is the goal — '
+            'avoiding bogeys matters more than making birdies. Mental toughness and patience under extreme difficulty '
+            'are the #1 predictors. Bombers who can also find fairways have an advantage in the rough.\n\n'
+            '🎯 Driving accuracy under pressure | 🏌️ Iron play from thick rough | '
+            '⛳ Exceptional putting on firm, fast greens | 💪 Mental toughness / patience | '
+            '🏆 Prior major experience and top-20 world ranking — U.S. Opens rarely produce surprise winners'
+        ),
+        'The Open': (
+            '🎯 **The Open Championship — What to look for:**\n\n'
+            'Links golf demands creativity, wind management, and ground game skills most tour players rarely use. '
+            'Running shots into greens, bump-and-runs, and managing pot bunkers are essential. '
+            'Distance matters less than adaptability. '
+            'Players with links experience (European Tour, Scottish/Irish Open) have a huge edge.\n\n'
+            '🌬️ Wind management (top priority) | 🏌️ Creative low ball flight | '
+            '✂️ Ground game & links-style short game | '
+            '🏆 Strong European Tour / links course history | '
+            'Avoid one-trick bombers with no links experience'
+        ),
+        # ── THE PLAYERS ───────────────────────────────────────────────────────
+        'Players': (
+            '🎯 **TPC Sawgrass (The Players Championship) — What to look for:**\n\n'
+            'The "fifth major" demands accuracy above all. Island green 17th is the most famous hole in golf and '
+            'can end a tournament in one swing. Small, firm greens require precise iron play — '
+            'bombers who spray it get eaten alive by water and OB.\n\n'
+            '🎯 Driving accuracy (critical) | 🏌️ Elite iron play to small greens | '
+            '💪 Mental steadiness on 17 | ⛳ Solid putting on Bermuda | '
+            '🏆 Multiple prior Players starts — water avoidance improves with experience here'
+        ),
+        # ── REGULAR EVENTS ────────────────────────────────────────────────────
+        'Phoenix': (
+            '🎯 **TPC Scottsdale (WM Phoenix Open) — What to look for:**\n\n'
+            'One of the lowest-scoring events of the year. Par-5 dominance is king — players who birdie '
+            'all four par-5s consistently are in great shape. Stadium atmosphere on 16 rewards fearless players. '
+            'Look for players ranked near the top in birdie average.\n\n'
+            '🏌️ Driving distance for par-5 access | 🐦 Elite birdie rate | '
+            '⛳ Hot putter | 📈 Recent scoring momentum | '
+            'Prior TPC Scottsdale performance is highly predictive'
+        ),
+        'Cognizant': (
+            '🎯 **PGA National (Cognizant Classic) — What to look for:**\n\n'
+            '"The Bear Trap" (holes 15–17) decides more tournaments than any other stretch on tour. '
+            'Accuracy off the tee trumps distance. Wind off the Florida water is a constant factor. '
+            'Look for grinders who make pars under pressure and elite putters.\n\n'
+            '🎯 Driving accuracy | ⛳ Elite putting under pressure | '
+            '✂️ Scrambling ability | 🌊 Wind management | '
+            '💪 Mental toughness on The Bear Trap finishing holes'
+        ),
+        'Valspar': (
+            '🎯 **Innisbrook — Copperhead (Valspar Championship) — What to look for:**\n\n'
+            'Some of the toughest rough conditions on tour. Miss the fairway and you\'re grinding for bogey. '
+            'Driving accuracy is the single most important stat here. GIR% and scrambling follow closely. '
+            'Mid-ranked accurate players routinely outperform big-name bombers.\n\n'
+            '🎯 Driving accuracy (top priority) | 🏌️ GIR% from tight lies | '
+            '✂️ Scrambling from deep rough | '
+            'Fade distance-only players | 🏆 Value picks — upsets are common here'
+        ),
+        'Houston': (
+            '🎯 **Memorial Park (Texas Children\'s Houston Open) — What to look for:**\n\n'
+            'Memorial Park was redesigned by Tom Doak and rewards precision over power. '
+            'The Bermuda rough can be punishing, and approach play to firm greens is critical. '
+            'A good tune-up week before the Masters — look for Augusta-style players (ball strikers, good putters).\n\n'
+            '🎯 Precision iron play | ⛳ Putting on Bermuda | '
+            '🏌️ Controlled ball flight | 🏆 Players peaking heading into Masters prep | '
+            'Good week to target world top-50 players who skip this to rest'
+        ),
+        'Valero': (
+            '🎯 **TPC San Antonio — AT&T Oaks (Valero Texas Open) — What to look for:**\n\n'
+            'Final warm-up before the Masters draws a motivated field — players who need a win to get into Augusta '
+            'are playing for their season. Bermuda rough, warm weather, and a long layout favor bombers '
+            'who can also putt on grainy greens. Motivation factor is huge here.\n\n'
+            '🏌️ Driving distance | ⛳ Putting on Bermuda greens | '
+            '💪 High-motivation players chasing Masters spots | '
+            '🎯 Solid all-around game | Watch for hungry bubble players'
+        ),
+        'Zurich': (
+            '🎯 **TPC Louisiana (Zurich Classic — Team Event) — What to look for:**\n\n'
+            'Unique two-man team format (foursomes & fourball) changes everything. '
+            'Complementary pairings are more important than individual rankings. '
+            'Look for teams where one player is an aggressive birdie-hunter and the other is a consistent ball-striker. '
+            'Scrambling teams with elite putters dominate fourball format.\n\n'
+            '👥 Team chemistry and complementary styles | 🐦 Birdie-hunting in fourball | '
+            '🎯 Accuracy and consistency in foursomes | '
+            '⛳ Elite putting | Past Zurich team performance is the best predictor'
+        ),
+        'Byron Nelson': (
+            '🎯 **TPC Craig Ranch (CJ Cup Byron Nelson) — What to look for:**\n\n'
+            'One of the most birdie-friendly courses on tour. Long but wide open — bombers thrive. '
+            'Scoring in the 20s-under is common. Hot putters and aggressive players who go for flags do best. '
+            'Field is typically weakened by European Tour conflicts — value picks abound.\n\n'
+            '🏌️ Driving distance | 🐦 Birdie rate | '
+            '⛳ Hot putter | 📈 Recent low-scoring form | '
+            '💰 Great week for mid-ranked value picks with strong distance stats'
+        ),
+        'Schwab': (
+            '🎯 **Colonial CC (Charles Schwab Challenge) — What to look for:**\n\n'
+            '"Hogan\'s Alley" demands relentless precision. One of the tightest driving corridors on tour — '
+            'Colonial punishes wild drivers harshly. Short but demanding, with small bentgrass greens '
+            'that require soft, precise iron shots. Accuracy players dominate every year.\n\n'
+            '🎯 Driving accuracy (critical) | 🏌️ Precise iron play to small greens | '
+            '⛳ Putting on bentgrass | '
+            'Fade long/wild hitters completely | 🏆 Strong Colonial history — Hogan\'s Alley favors familiarity'
+        ),
+        'Canadian Open': (
+            '🎯 **TPC Toronto at Osprey Valley (RBC Canadian Open) — What to look for:**\n\n'
+            'A relatively new venue on tour. The North Course is a classic parkland layout where '
+            'driving accuracy and iron play are both important. Canadian weather (wind, potential rain) '
+            'can affect scoring. Look for all-around ball strikers with experience in variable conditions.\n\n'
+            '🎯 Driving accuracy | 🏌️ Consistent iron play | '
+            '🌬️ Wind/weather management | '
+            '⛳ Solid putting | All-around players over one-dimensional specialists'
+        ),
+        'Puntacana': (
+            '🎯 **Corales GC (Corales Puntacana Championship) — What to look for:**\n\n'
+            'Opposite-field event played the same week as a Signature Event — the field is weaker. '
+            'Corales is a stunning cliff-top course with ocean wind as a constant factor. '
+            'Distance helps on wide oceanside holes, but wind management is crucial. '
+            'Great week to target value picks not playing the marquee event.\n\n'
+            '🌬️ Wind management | 🏌️ Driving distance on wide holes | '
+            '⛳ Solid putting | 💰 Prime value pick week | '
+            'Players who chose this over larger event are usually motivated to compete'
+        ),
+        '3M Open': (
+            '🎯 **TPC Twin Cities (3M Open) — What to look for:**\n\n'
+            'A bomber\'s paradise. Wide fairways and reachable par-5s make this one of the highest-scoring '
+            'events of the summer. Winning scores can reach -25 or lower. '
+            'Distance off the tee is the single best predictor — elite putters who can also bomb it thrive.\n\n'
+            '🏌️ Driving distance (top priority) | 🐦 Par-5 birdie efficiency | '
+            '⛳ Hot putter | 📈 Players in peak summer form | '
+            '💰 Good week to target long-hitting value players'
+        ),
+        'Rocket': (
+            '🎯 **Detroit Golf Club (Rocket Classic) — What to look for:**\n\n'
+            'A classic parkland course with tree-lined fairways that demand accuracy. '
+            'Low scoring is typical, but unlike TPC Twin Cities, precision matters more than pure length. '
+            'GIR% and approach play are top predictors. Hot putters in warm summer conditions do well.\n\n'
+            '🎯 Driving accuracy | 🏌️ GIR% & approach play | '
+            '⛳ Putting in warm conditions | '
+            '📈 Players with strong summer form | '
+            'All-around ball strikers over pure bombers'
+        ),
+        'Wyndham': (
+            '🎯 **Sedgefield CC (Wyndham Championship) — What to look for:**\n\n'
+            'Final event before FedEx Cup Playoffs — bubble players are incredibly motivated. '
+            'Classic, shorter parkland where accurate shorter hitters can absolutely compete with bombers. '
+            'One of the few events where putting and accuracy alone can win.\n\n'
+            '🎯 Driving accuracy | ⛳ Elite putting | '
+            '✂️ Scrambling from short rough | '
+            '💪 High-motivation bubble players fighting for playoff spots | '
+            'Check FedEx Cup standings — position 70-125 players are playing for their season'
+        ),
+        # ── FEDEX CUP PLAYOFFS ────────────────────────────────────────────────
+        'St. Jude': (
+            '🎯 **TPC Southwind (FedEx St. Jude Championship) — What to look for:**\n\n'
+            'First FedEx Playoff event — Bermuda rough and tight Bermuda fairways in Memphis heat. '
+            'TPC Southwind is a grinder\'s course that rewards accuracy over distance. '
+            'Players who have struggled with Bermuda grass all season are a fade. '
+            'Playoff pressure separates the mentally strong from the rest.\n\n'
+            '🎯 Driving accuracy on Bermuda | 🏌️ Iron play to fast greens | '
+            '⛳ Putting on Bermuda | 💪 Playoff experience & mental fortitude | '
+            'Eliminate players with poor Bermuda track records'
+        ),
+        'BMW Championship': (
+            '🎯 **Bellerive CC (BMW Championship) — What to look for:**\n\n'
+            'Second FedEx Playoff event — only top 50 in FedEx points remain. '
+            'Bellerive is a long, demanding layout where the best players in the world rise to the top. '
+            'No significant course-specific biases — just pick the elite players in the hottest form. '
+            'Momentum from St. Jude carries over heavily.\n\n'
+            '🏆 World ranking & FedEx standing | 📈 Recent form / momentum | '
+            '🏌️ Long game under pressure | '
+            '💪 Playoff experience | At this point just pick Scheffler and the next hottest player'
+        ),
+        'Tour Championship': (
+            '🎯 **East Lake GC (Tour Championship) — What to look for:**\n\n'
+            'Only the top 30 in FedEx Cup compete with a staggered starting score format — '
+            'the FedEx leader starts at -10, creating a realistic chance for anyone in the top 10. '
+            'East Lake rewards all-around excellence. The stagger means the #1 seed has a massive advantage.\n\n'
+            '🏆 FedEx Cup standing (the stagger is everything) | '
+            '📈 Momentum through the playoffs | '
+            '🏌️ Elite all-around game | ⛳ Clutch putting in pressure situations | '
+            'Target the top-3 FedEx seeds — they win ~60% of the time'
+        ),
+        # ── FALL EVENTS ───────────────────────────────────────────────────────
+        'Sanderson': (
+            '🎯 **Country Club of Jackson (Sanderson Farms Championship) — What to look for:**\n\n'
+            'Fall FedEx season opener. Softer field of players rebuilding points. '
+            'Traditional parkland layout rewards accurate iron play and putting. '
+            'Great week to target young players and recent Korn Ferry graduates hungry to prove themselves.\n\n'
+            '🎯 Iron play & accuracy | ⛳ Putting | '
+            '🌱 Young/hungry players on the rise | '
+            '💰 Excellent value pick week — field is weak and motivated mid-tier players can win'
+        ),
+        'Shriners': (
+            '🎯 **TPC Summerlin (Shriners Children\'s Open) — What to look for:**\n\n'
+            'One of the lowest-scoring events of the entire year. Wide-open desert layout with '
+            'reachable par-5s and very little rough. Scoring regularly reaches -25 or lower. '
+            'Elite distance + elite putting = winner. Scrambling matters very little here.\n\n'
+            '🏌️ Driving distance | 🐦 Birdie rate | ⛳ Elite putter | '
+            '📈 Players with hot scoring form | '
+            'Fade all accuracy-first players — this course rewards aggressive attack'
+        ),
+        'Zozo': (
+            '🎯 **Accordia Golf Narashino CC (ZOZO Championship) — What to look for:**\n\n'
+            'Played in Japan — flat, parkland layout where ball striking and iron play are paramount. '
+            'Jet lag and travel are real factors; favor players with Japan experience or who arrived early. '
+            'Low scoring typical. Historical winners have been elite world-ranked players.\n\n'
+            '✈️ Travel/jet lag management | 🎯 Consistent iron play | '
+            '⛳ Putting on Bermuda | '
+            '🏆 Top-20 world ranking | Prior Japan tournament experience a plus'
+        ),
+        'Bermuda': (
+            '🎯 **Port Royal GC (Butterfield Bermuda Championship) — What to look for:**\n\n'
+            'Opposite-field event on a unique island course. Ocean wind is the defining factor — '
+            'creative wind management separates contenders. Soft field with motivated players '
+            'who didn\'t qualify for elite events.\n\n'
+            '🌬️ Wind management (critical) | 🎯 Accuracy in gusty conditions | '
+            '💰 Strong value pick week | '
+            'Players with links/coastal experience | Look for motivated mid-tier players'
+        ),
+        'World Wide Technology': (
+            '🎯 **El Cardonal at Diamante (World Wide Technology Championship) — What to look for:**\n\n'
+            'Stunning Pacific coast course in Cabo San Lucas. Tiger Woods design with wide corridors '
+            'but demanding approach angles into greens. Ocean wind is always a factor. '
+            'Low scoring typical in the warm Mexican climate.\n\n'
+            '🏌️ Driving distance on wide corridors | 🎯 Approach play to elevated/sloped greens | '
+            '🌬️ Wind management | ⛳ Putting | '
+            '📈 Recent form — players coming in hot dominate here'
+        ),
+        'Myrtle Beach': (
+            '🎯 **Dunes Golf and Beach Club (ONEflight Myrtle Beach Classic) — What to look for:**\n\n'
+            'Classic coastal layout where wind off the Atlantic creates variable conditions. '
+            'Opposite-field event allows for great value picks. Dunes rewards all-around play '
+            'with a premium on accuracy into small greens. Motivated mid-tier players often excel.\n\n'
+            '🌬️ Wind management | 🎯 Accuracy into small greens | '
+            '⛳ Putting | 💰 Strong value pick week | '
+            'Players not competing in the concurrent Truist Championship'
+        ),
     }
     insight = next((v for k, v in course_insights.items() if k.lower() in tournament_name.lower()), None)
     if insight:
@@ -206,8 +526,7 @@ def player_card(player_data, tournament_info):
         perf_name = player_data.get('player_name', '')
         try:
             import sqlite3
-            from db_connection import get_connection
-            perf_conn = get_connection(str(st.session_state.db_manager.db_path))
+            perf_conn = sqlite3.connect(str(st.session_state.db_manager.db_path))
             perf_cursor = perf_conn.cursor()
             perf_cursor.execute(
                 "SELECT scoring_avg, driving_distance, driving_accuracy, gir_pct, putts_per_hole, birdies_per_round, scoring_avg_rank, driving_distance_rank, driving_accuracy_rank, gir_pct_rank, putts_per_hole_rank, birdies_per_round_rank, composite_score FROM player_performance_stats WHERE player_name = ?",
